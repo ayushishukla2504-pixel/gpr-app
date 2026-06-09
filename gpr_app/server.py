@@ -1,7 +1,18 @@
 """
 GPR B-Scan Analyser — Backend Server
 """
+import subprocess
+subprocess.run(["pip", "install", "gdown", "-q"])
+import gdown
+import os
 
+if not os.path.exists("best.pt") or os.path.getsize("best.pt") < 1000000:
+    print("Downloading best.pt...")
+    gdown.download(id="1q-BV-7_JvOfiyol4Aa8udG9A9kJTF5hO", output="best.pt", quiet=False)
+
+if not os.path.exists("classifier_best.pth") or os.path.getsize("classifier_best.pth") < 1000000:
+    print("Downloading classifier_best.pth...")
+    gdown.download(id="15xEBkXlSOdh6QmY7QMk90YQ1wjFtodbp", output="classifier_best.pth", quiet=False)
 import io
 import os
 import base64
