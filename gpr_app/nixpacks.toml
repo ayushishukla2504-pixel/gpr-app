@@ -1,2 +1,5 @@
 [phases.setup]
-nixPkgs = ["libxcb"]
+nixPkgs = ["libxcb", "libGL", "glib", "fontconfig"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
