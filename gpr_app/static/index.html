@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPR B-Scan Analyser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #0b0e14;
+  --surface:   #111520;
+  --surface2:  #181d2a;
+  --border:    #232840;
+  --accent:    #3d7fff;
+  --cavity:    #e24b4a;
+  --utility:   #378add;
+  --intact:    #4caf72;
+  --text:      #e8ecf4;
+  --muted:     #6b7494;
+  --mono:      'Space Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* scanline texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* grid pattern */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(61,127,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61,127,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wrap {
+  position: relative;
+  z-index: 1;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.logo-icon {
+  width: 42px; height: 42px;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.logo-icon::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 40%;
+  background: linear-gradient(to top, rgba(61,127,255,0.25), transparent);
+}
+.logo-wave {
+  width: 26px; height: 18px;
+  stroke: var(--accent);
+  fill: none;
+  stroke-width: 1.8;
+}
+.logo-text { line-height: 1.15; }
+.logo-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.logo-sub   { font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-family: var(--mono);
+  color: var(--muted); padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #444; transition: background 0.3s; }
+.status-dot.online { background: var(--intact); box-shadow: 0 0 6px var(--intact); }
+
+/* Upload zone */
+.upload-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  padding: 3.5rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  background: var(--surface);
+  margin-bottom: 1.5rem;
+}
+.upload-zone:hover, .upload-zone.drag {
+  border-color: var(--accent);
+  background: rgba(61,127,255,0.04);
+}
+.upload-zone input { display: none; }
+.upload-icon {
+  width: 52px; height: 52px;
+  margin: 0 auto 1rem;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted);
+  font-size: 22px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.upload-zone:hover .upload-icon {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.upload-title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+.upload-hint  { font-size: 13px; color: var(--muted); }
+
+/* Columns layout */
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+@media (max-width: 720px) {
+  .columns { grid-template-columns: 1fr; }
+}
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.card-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-body { padding: 14px; }
+
+/* Image output */
+#img-output {
+  width: 100%;
+  border-radius: 6px;
+  display: block;
+  image-rendering: crisp-edges;
+}
+#img-placeholder {
+  width: 100%; aspect-ratio: 4/3;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--surface2);
+  border-radius: 6px;
+}
+
+/* Stats */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.stat {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.stat-label { font-size: 10px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
+.stat-val   { font-size: 19px; font-weight: 600; }
+.val-cavity  { color: var(--cavity); }
+.val-utility { color: var(--utility); }
+.val-intact  { color: var(--intact); }
+.val-high    { color: var(--cavity); }
+.val-medium  { color: #f0a732; }
+.val-low     { color: var(--intact); }
+
+/* Detections list */
+.det-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.det-item:last-child { border-bottom: none; }
+.det-num { color: var(--muted); font-family: var(--mono); min-width: 20px; }
+.badge {
+  font-size: 10px; font-weight: 600;
+  padding: 2px 8px; border-radius: 100px;
+  font-family: var(--mono);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.b-cavity  { background: rgba(226,75,74,0.15);  color: #f08080; border: 1px solid rgba(226,75,74,0.3); }
+.b-utility { background: rgba(55,138,221,0.15); color: #7ab8f5; border: 1px solid rgba(55,138,221,0.3); }
+.b-intact  { background: rgba(76,175,114,0.15); color: #7ecf97; border: 1px solid rgba(76,175,114,0.3); }
+.det-conf  { color: var(--muted); margin-left: auto; font-family: var(--mono); }
+.det-loc   { color: #454d6a; font-size: 10px; font-family: var(--mono); }
+
+/* Log */
+#log {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 2;
+  min-height: 44px;
+}
+.log-line { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.log-ok   { color: var(--intact); }
+.log-warn { color: #f0a732; }
+.log-info { color: var(--accent); }
+
+/* Interpretation */
+#interpretation {
+  font-size: 13px;
+  line-height: 1.75;
+  color: #9aa3be;
+  font-style: italic;
+}
+
+/* Legend */
+.legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 12px; color: var(--muted);
+}
+.legend span { display: flex; align-items: center; gap: 5px; }
+.ldot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* Progress bar */
+.progress-bar {
+  height: 2px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.5s ease;
+}
+
+/* Analyse button */
+.analyse-btn {
+  width: 100%;
+  padding: 13px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  letter-spacing: 0.02em;
+  margin-top: 6px;
+}
+.analyse-btn:hover { opacity: 0.88; }
+.analyse-btn:active { transform: scale(0.99); }
+.analyse-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* Spinner */
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  display: none;
+}
+.spinning { animation: spin 0.7s linear infinite; display: block !important; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* No results */
+.empty { color: var(--muted); font-size: 13px; text-align: center; padding: 1rem 0; }
+
+/* Model status badges */
+.model-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.mbadge {
+  font-size: 10px; font-family: var(--mono);
+  padding: 3px 8px; border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.mbadge.loaded { border-color: rgba(76,175,114,0.4); color: var(--intact); background: rgba(76,175,114,0.08); }
+.mbadge.missing { border-color: rgba(226,75,74,0.3); color: #f08080; background: rgba(226,75,74,0.07); }
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg class="logo-wave" viewBox="0 0 26 18">
+          <path d="M1 9 Q4 2 7 9 Q10 16 13 9 Q16 2 19 9 Q22 16 25 9"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <div class="logo-title">GPR B-Scan Analyser</div>
+        <div class="logo-sub">Subsurface Detection System</div>
+      </div>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">connecting...</span>
+    </div>
+  </header>
+
+  <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <input type="file" id="file-input" accept="image/*">
+    <div class="upload-icon">&#8679;</div>
+    <div class="upload-title">Drop your GPR B-scan here</div>
+    <div class="upload-hint">or click to browse &mdash; PNG, JPG, BMP accepted</div>
+    <div class="progress-bar" style="margin-top:1.5rem;max-width:200px;margin-left:auto;margin-right:auto">
+      <div class="progress-fill" id="progress"></div>
+    </div>
+  </div>
+
+  <div id="model-status" style="margin-bottom:1.25rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">MODELS:</span>
+    <div class="model-badges">
+      <span class="mbadge" id="badge-clf">classifier —</span>
+      <span class="mbadge" id="badge-det">detector —</span>
+      <span class="mbadge" id="badge-dev">device —</span>
+    </div>
+  </div>
+
+  <div class="columns">
+
+    <div>
+      <div class="card">
+        <div class="card-head">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="10" height="10" rx="1.5"/><path d="M1 4h10M4 1v10"/></svg>
+          Annotated scan output
+        </div>
+        <div class="card-body" style="padding:10px">
+          <div class="legend">
+            <span><div class="ldot" style="background:var(--cavity)"></div>cavity</span>
+            <span><div class="ldot" style="background:var(--utility)"></div>utility</span>
+            <span><div class="ldot" style="background:var(--intact)"></div>intact</span>
+          </div>
+          <div id="img-placeholder">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1">
+              <rect x="3" y="3" width="34" height="34" rx="3"/>
+              <path d="M3 28 L12 18 L19 24 L27 15 L37 26"/>
+            </svg>
+            <span>Awaiting scan upload</span>
+          </div>
+          <img id="img-output" src="" alt="Annotated GPR scan" style="display:none">
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-head">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="5"/><path d="M6 4v2.5l1.5 1.5"/></svg>
+          System log
+        </div>
+        <div class="card-body">
+          <div id="log"><span class="log-line">Ready. Upload a scan to begin.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-head">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 10 L5 5 L8 7 L11 2"/></svg>
+          Analysis results
+        </div>
+        <div class="card-body">
+          <div class="stats-grid">
+            <div class="stat">
+              <div class="stat-label">Class</div>
+              <div class="stat-val" id="s-class" style="font-size:15px;font-weight:600">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Confidence</div>
+              <div class="stat-val" id="s-conf">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Detections</div>
+              <div class="stat-val" id="s-det">—</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Risk</div>
+              <div class="stat-val" id="s-risk">—</div>
+            </div>
+          </div>
+          <button class="analyse-btn" id="analyse-btn" disabled onclick="runAnalysis()">
+            <div class="spinner" id="spinner"></div>
+            <span id="btn-text">Upload a scan first</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-head">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="2"/><circle cx="8" cy="8" r="2"/><path d="M6 4h3M3 8H1"/></svg>
+          Detected anomalies
+        </div>
+        <div class="card-body">
+          <div id="det-list"><div class="empty">No data yet</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 1v10M1 6h10"/></svg>
+          Interpretation
+        </div>
+        <div class="card-body">
+          <div id="interpretation" style="color:var(--muted);font-size:13px">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>GPR B-Scan Analyser &mdash; powered by YOLOv8 + ResNet18</span>
+    <span id="footer-device">device: —</span>
+  </footer>
+</div>
+
+<script>
+const API = '';
+let pendingFile = null;
+let logLines = [];
+
+function log(msg, type=''){
+  const cls = type ? `log-${type}` : '';
+  logLines.push(`<span class="log-line ${cls}">&gt; ${msg}</span>`);
+  if(logLines.length > 8) logLines.shift();
+  document.getElementById('log').innerHTML = logLines.join('<br>');
+}
+
+async function checkStatus(){
+  try {
+    const r = await fetch(`${API}/status`);
+    const d = await r.json();
+    document.getElementById('status-dot').classList.add('online');
+    document.getElementById('status-text').textContent = 'server online';
+
+    const bc = document.getElementById('badge-clf');
+    const bd = document.getElementById('badge-det');
+    const bv = document.getElementById('badge-dev');
+    bc.textContent = d.classifier ? 'classifier ✓' : 'classifier ✗ missing';
+    bc.className   = 'mbadge ' + (d.classifier ? 'loaded' : 'missing');
+    bd.textContent = d.detector  ? 'detector ✓'  : 'detector ✗ missing';
+    bd.className   = 'mbadge ' + (d.detector  ? 'loaded' : 'missing');
+    bv.textContent = 'device: ' + d.device;
+    bv.className   = 'mbadge loaded';
+    document.getElementById('footer-device').textContent = 'device: ' + d.device;
+    log('Server connected', 'ok');
+  } catch(e){
+    document.getElementById('status-text').textContent = 'server offline';
+    log('Cannot reach server — is server.py running?', 'warn');
+  }
+}
+
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover',  e=>{ e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e=>{
+  e.preventDefault(); dropZone.classList.remove('drag');
+  if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(f){
+  if(!f.type.startsWith('image/')){ log('Not an image file', 'warn'); return; }
+  pendingFile = f;
+  log(`File loaded: ${f.name} (${(f.size/1024).toFixed(0)} KB)`, 'info');
+  document.getElementById('progress').style.width = '100%';
+
+  const reader = new FileReader();
+  reader.onload = e=>{
+    const img = document.getElementById('img-output');
+    const ph  = document.getElementById('img-placeholder');
+    img.src = e.target.result;
+    img.style.display = 'block';
+    ph.style.display  = 'none';
+  };
+  reader.readAsDataURL(f);
+
+  const btn = document.getElementById('analyse-btn');
+  btn.disabled = false;
+  document.getElementById('btn-text').textContent = 'Analyse scan';
+}
+
+async function runAnalysis(){
+  if(!pendingFile) return;
+  const btn     = document.getElementById('analyse-btn');
+  const spinner = document.getElementById('spinner');
+  const btnText = document.getElementById('btn-text');
+
+  btn.disabled = true;
+  spinner.classList.add('spinning');
+  btnText.textContent = 'Analysing...';
+  log('Sending image to models...', 'info');
+
+  const form = new FormData();
+  form.append('file', pendingFile);
+
+  try {
+    const resp = await fetch(`${API}/analyse`, { method:'POST', body: form });
+    if(!resp.ok) throw new Error(`Server error ${resp.status}`);
+    const data = await resp.json();
+
+    log(`Classification: ${data.overall_class} (${(data.confidence*100).toFixed(0)}%)`, 'ok');
+    log(`Detections: ${data.detections.length}  Risk: ${data.risk_level}`, 'ok');
+
+    // Show annotated image
+    const img = document.getElementById('img-output');
+    img.src = data.annotated_image;
+    img.style.display = 'block';
+    document.getElementById('img-placeholder').style.display = 'none';
+
+    // Stats
+    const cls = data.overall_class;
+    const sc  = document.getElementById('s-class');
+    sc.textContent = cls;
+    sc.className   = `stat-val val-${cls}`;
+
+    document.getElementById('s-conf').textContent = (data.confidence*100).toFixed(0) + '%';
+    document.getElementById('s-det').textContent  = data.detections.length;
+
+    const sr = document.getElementById('s-risk');
+    sr.textContent = data.risk_level;
+    sr.className   = `stat-val val-${data.risk_level}`;
+
+    // Detections list
+    const dl = document.getElementById('det-list');
+    if(data.detections.length === 0){
+      dl.innerHTML = '<div class="empty">No anomalies detected</div>';
+    } else {
+      dl.innerHTML = data.detections.map((d,i)=>`
+        <div class="det-item">
+          <span class="det-num">#${i+1}</span>
+          <span class="badge b-${d.class}">${d.class}</span>
+          <span class="det-loc">${d.x_pct}%,${d.y_pct}%</span>
+          <span class="det-conf">${(d.conf*100).toFixed(0)}%</span>
+        </div>`).join('');
+    }
+
+    // Interpretation
+    const risk_text = {
+      low:    'No critical subsurface anomalies detected. Ground appears structurally stable.',
+      medium: 'Some subsurface anomalies present. Further investigation recommended.',
+      high:   'Multiple cavity signatures detected. Structural risk is elevated — immediate review advised.'
+    };
+    const cls_text = {
+      cavity:  `Scan classified as CAVITY — hyperbolic reflection patterns indicate subsurface voids. `,
+      utility: `Scan classified as UTILITY — reflection signatures consistent with buried pipes or cables. `,
+      intact:  `Scan classified as INTACT — no significant subsurface anomalies visible. `
+    };
+    document.getElementById('interpretation').textContent =
+      (cls_text[cls] || '') + (risk_text[data.risk_level] || '');
+
+  } catch(e){
+    log('Error: ' + e.message, 'warn');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.remove('spinning');
+    btnText.textContent = 'Analyse again';
+  }
+}
+
+checkStatus();
+setInterval(checkStatus, 15000);
+</script>
+</body>
+</html>
