@@ -6,6 +6,12 @@ subprocess.run(["pip", "install", "gdown", "-q"])
 import gdown
 import os
 
+# Force headless BEFORE everything
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"
+os.environ["QT_QPA_PLATFORM"]          = "offscreen"
+os.environ["DISPLAY"]                  = ":99"
+os.environ["MPLBACKEND"]               = "Agg"
+
 if not os.path.exists("best.pt") or os.path.getsize("best.pt") < 1000000:
     print("Downloading best.pt...")
     gdown.download(id="1q-BV-7_JvOfiyol4Aa8udG9A9kJTF5hO", output="best.pt", quiet=False)
@@ -13,17 +19,11 @@ if not os.path.exists("best.pt") or os.path.getsize("best.pt") < 1000000:
 if not os.path.exists("classifier_best.pth") or os.path.getsize("classifier_best.pth") < 1000000:
     print("Downloading classifier_best.pth...")
     gdown.download(id="15xEBkXlSOdh6QmY7QMk90YQ1wjFtodbp", output="classifier_best.pth", quiet=False)
+
 import io
-import os
 import base64
 import numpy as np
 from pathlib import Path
-
-# Force headless / no-display BEFORE any cv2 or torch import
-os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "0"
-os.environ["QT_QPA_PLATFORM"]          = "offscreen"
-os.environ["DISPLAY"]                  = ""
-os.environ["MPLBACKEND"]               = "Agg"
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -44,9 +44,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Config ───────────────────────────────────────────────────────────────────
 CLASS_NAMES    = ["cavity", "intact", "utility"]
-DEVICE         = torch.device("cpu")   # Railway has no GPU
+DEVICE         = torch.device("cpu")
 BASE_DIR       = Path(__file__).parent
 YOLO_WEIGHTS   = str(BASE_DIR / "best.pt")
 CLF_WEIGHTS    = str(BASE_DIR / "classifier_best.pth")
@@ -63,26 +62,23 @@ LABEL_BG = {
     "intact":  (99,  153, 34),
 }
 
-# ── Load models at startup ───────────────────────────────────────────────────
 yolo_model = None
 clf_model  = None
 
 def load_models():
     global yolo_model, clf_model
 
-    # YOLOv8 — import here so env vars are set first
     if Path(YOLO_WEIGHTS).exists():
         try:
             from ultralytics import YOLO
             yolo_model = YOLO(YOLO_WEIGHTS)
             yolo_model.to("cpu")
-            print(f"✅ YOLOv8 loaded from {YOLO_WEIGHTS}")
+            print(f"✅ YOLOv8 loaded")
         except Exception as e:
             print(f"⚠️  YOLOv8 load failed: {e}")
     else:
-        print(f"⚠️  {YOLO_WEIGHTS} not found — detection disabled")
+        print(f"⚠️  best.pt not found")
 
-    # ResNet18 classifier
     if Path(CLF_WEIGHTS).exists():
         try:
             m = models.resnet18(weights=None)
@@ -96,18 +92,17 @@ def load_models():
                 nn.Dropout(0.3),
                 nn.Linear(128, 3)
             )
-            m.load_state_dict(torch.load(CLF_WEIGHTS, map_location=DEVICE))
+            m.load_state_dict(torch.load(CLF_WEIGHTS, map_location=DEVICE, weights_only=False))
             m.eval().to(DEVICE)
             clf_model = m
-            print(f"✅ ResNet18 classifier loaded from {CLF_WEIGHTS}")
+            print(f"✅ ResNet18 classifier loaded")
         except Exception as e:
             print(f"⚠️  Classifier load failed: {e}")
     else:
-        print(f"⚠️  {CLF_WEIGHTS} not found — classification disabled")
+        print(f"⚠️  classifier_best.pth not found")
 
 load_models()
 
-# ── Transforms ───────────────────────────────────────────────────────────────
 clf_tf = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -115,7 +110,6 @@ clf_tf = transforms.Compose([
                          [0.229, 0.224, 0.225]),
 ])
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 def classify_image(img_rgb: Image.Image):
     if clf_model is None:
         return None, None
@@ -126,7 +120,6 @@ def classify_image(img_rgb: Image.Image):
     idx  = probs.argmax().item()
     conf = float(probs[idx])
     return CLASS_NAMES[idx], conf
-
 
 def detect_objects(img_path: str):
     if yolo_model is None:
@@ -153,7 +146,6 @@ def detect_objects(img_path: str):
     except Exception as e:
         print(f"Detection error: {e}")
         return []
-
 
 def draw_results(img_rgb, detections, clf_label, clf_conf):
     img     = img_rgb.copy().convert("RGBA")
@@ -208,8 +200,6 @@ def draw_results(img_rgb, detections, clf_label, clf_conf):
 
     return img
 
-
-# ── Routes ────────────────────────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
@@ -218,7 +208,6 @@ async def index():
     if html_path.exists():
         return HTMLResponse(html_path.read_text())
     return HTMLResponse("<h1>GPR Analyser</h1><p>static/index.html not found</p>")
-
 
 @app.post("/analyse")
 async def analyse(file: UploadFile = File(...)):
@@ -260,7 +249,6 @@ async def analyse(file: UploadFile = File(...)):
         }
     })
 
-
 @app.get("/status")
 async def status():
     return {
@@ -268,7 +256,6 @@ async def status():
         "detector":   yolo_model is not None,
         "device":     str(DEVICE),
     }
-
 
 if __name__ == "__main__":
     import uvicorn
