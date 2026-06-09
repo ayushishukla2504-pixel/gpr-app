@@ -36,8 +36,9 @@ app.add_middleware(
 # ── Config ───────────────────────────────────────────────────────────────────
 CLASS_NAMES    = ["cavity", "intact", "utility"]
 DEVICE         = torch.device("cpu")   # Railway has no GPU
-YOLO_WEIGHTS   = "best.pt"
-CLF_WEIGHTS    = "classifier_best.pth"
+BASE_DIR       = Path(__file__).parent
+YOLO_WEIGHTS   = str(BASE_DIR / "best.pt")
+CLF_WEIGHTS    = str(BASE_DIR / "classifier_best.pth")
 CONF_THRESHOLD = 0.25
 
 BOX_COLORS = {
