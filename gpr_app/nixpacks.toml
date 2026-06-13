@@ -1,5 +1,9 @@
+
 [phases.setup]
-nixPkgs = ["libxcb", "libGL", "glib", "fontconfig"]
+nixPkgs = ["fontconfig", "dejavu_fonts", "libGL", "glib", "zlib"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+  "pip install opencv-python-headless==4.8.1.78",
+  "pip install -r requirements.txt"
+]
